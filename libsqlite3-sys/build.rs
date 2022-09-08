@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::path::Path;
 
 /// Tells whether we're building for Windows. This is more suitable than a plain
@@ -49,9 +50,10 @@ fn main() {
             );
         }
         build_linked::main(&out_dir, &out_path);
-    } else if cfg!(feature = "bundled")
+    } else if (cfg!(feature = "bundled")
         || (win_target() && cfg!(feature = "bundled-windows"))
-        || cfg!(feature = "bundled-sqlcipher")
+        || cfg!(feature = "bundled-sqlcipher"))
+        && env("SQLITE_NO_VENDOR").map_or(true, |s| s == "0")
     {
         #[cfg(any(
             feature = "bundled",
@@ -68,6 +70,24 @@ fn main() {
     } else {
         build_linked::main(&out_dir, &out_path);
     }
+}
+
+fn env_inner(name: &str) -> Option<OsString> {
+    let var = env::var_os(name);
+    println!("cargo:rerun-if-env-changed={}", name);
+
+    match var {
+        Some(ref v) => println!("{} = {}", name, v.to_string_lossy()),
+        None => println!("{} unset", name),
+    }
+
+    var
+}
+
+fn env(name: &str) -> Option<OsString> {
+    let prefix = env::var("TARGET").unwrap().to_uppercase().replace('-', "_");
+    let prefixed = format!("{}_{}", prefix, name);
+    env_inner(&prefixed).or_else(|| env_inner(name))
 }
 
 #[cfg(any(
